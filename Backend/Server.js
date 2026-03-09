@@ -2,6 +2,8 @@ const bcrypt = require("bcrypt")
 const express = require("express")
 const cors = require("cors")
 const mongoose = require("mongoose")
+const jwt = require("jsonwebtoken")
+const JWT_SECRET = "mindcare_secret_key"
 
 const app = express()
 
@@ -12,6 +14,38 @@ const app = express()
 app.use(cors())
 app.use(express.json())
 
+
+function authenticateToken(req, res, next) {
+
+    const authHeader = req.headers["authorization"]
+
+    const token = authHeader && authHeader.split(" ")[1]
+
+    if (!token) {
+
+        return res.status(401).json({
+            message: "Access denied"
+        })
+
+    }
+
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+
+        if (err) {
+
+            return res.status(403).json({
+                message: "Invalid token"
+            })
+
+        }
+
+        req.user = user
+
+        next()
+
+    })
+
+}
 // ============================
 // DATABASE CONNECTION
 // ============================
@@ -126,8 +160,6 @@ app.post("/login", async (req, res) => {
 
         const { email, password } = req.body
 
-        // find user by email
-
         const user = await User.findOne({ email })
 
         if (!user) {
@@ -138,8 +170,6 @@ app.post("/login", async (req, res) => {
             })
 
         }
-
-        // compare entered password with hashed password
 
         const match = await bcrypt.compare(password, user.password)
 
@@ -152,9 +182,22 @@ app.post("/login", async (req, res) => {
 
         }
 
+        // CREATE TOKEN
+
+        const token = jwt.sign(
+
+            { userId: user._id },
+
+            JWT_SECRET,
+
+            { expiresIn: "7d" }
+
+        )
+
         res.json({
             success: true,
             message: "Login successful",
+            token: token,
             user: {
                 name: user.name,
                 email: user.email
@@ -172,7 +215,6 @@ app.post("/login", async (req, res) => {
     }
 
 })
-
 // ============================
 // SAVE MOOD ENTRY
 // ============================
@@ -307,3 +349,15 @@ app.listen(PORT, () => {
     console.log("Server running on http://localhost:" + PORT)
 
 })
+
+app.get("/moods", authenticateToken, async (req, res) => {
+
+    const moods = await Mood.find()
+
+    res.json({
+        success: true,
+        data: moods
+    })
+
+})
+
